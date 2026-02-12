@@ -289,39 +289,44 @@ async def main():
 
 	for i, account in enumerate(accounts):
 		account_key = f'account_{i + 1}'
+		account_name = account.get_display_name(i)
 		try:
 			success, user_info = await check_in_account(account, i, app_config)
 			if success:
 				success_count += 1
 
-			should_notify_this_account = False
+			# 为每个账号构建美观的通知内容
+			if success:
+				status_icon = '✅'
+				status_text = '签到成功'
+			else:
+				status_icon = '❌'
+				status_text = '签到失败'
 
+			# 使用分隔线和格式化文本
+			account_result = f'---\n### {status_icon} {account_name}\n**状态**: {status_text}'
+
+			if user_info:
+				if user_info.get('success'):
+					quota = user_info['quota']
+					used = user_info['used_quota']
+					account_result += f'\n**余额**: `${quota}` | **已用**: `${used}`'
+					current_balances[account_key] = {'quota': quota, 'used': used}
+				else:
+					error_msg = user_info.get('error', 'Unknown error')
+					account_result += f'\n**⚠️ 用户信息**: {error_msg}'
+
+			notification_content.append(account_result)
+
+			# 签到失败需要通知
 			if not success:
-				should_notify_this_account = True
 				need_notify = True
-				account_name = account.get_display_name(i)
 				print(f'[NOTIFY] {account_name} failed, will send notification')
 
-			if user_info and user_info.get('success'):
-				current_quota = user_info['quota']
-				current_used = user_info['used_quota']
-				current_balances[account_key] = {'quota': current_quota, 'used': current_used}
-
-			if should_notify_this_account:
-				account_name = account.get_display_name(i)
-				status = '[SUCCESS]' if success else '[FAIL]'
-				account_result = f'{status} {account_name}'
-				if user_info and user_info.get('success'):
-					account_result += f'\n{user_info["display"]}'
-				elif user_info:
-					account_result += f'\n{user_info.get("error", "Unknown error")}'
-				notification_content.append(account_result)
-
 		except Exception as e:
-			account_name = account.get_display_name(i)
 			print(f'[FAILED] {account_name} processing exception: {e}')
 			need_notify = True  # 异常也需要通知
-			notification_content.append(f'[FAIL] {account_name} exception: {str(e)[:50]}...')
+			notification_content.append(f'---\n### ❌ {account_name}\n**状态**: 签到失败\n**⚠️ 异常**: {str(e)[:50]}...')
 
 	# 检查余额变化
 	current_balance_hash = generate_balance_hash(current_balances) if current_balances else None
@@ -339,41 +344,29 @@ async def main():
 		else:
 			print('[INFO] No balance changes detected')
 
-	# 为有余额变化的情况添加所有成功账号到通知内容
-	if balance_changed:
-		for i, account in enumerate(accounts):
-			account_key = f'account_{i + 1}'
-			if account_key in current_balances:
-				account_name = account.get_display_name(i)
-				# 只添加成功获取余额的账号，且避免重复添加
-				account_result = f'[BALANCE] {account_name}'
-				account_result += f'\n:money: Current balance: ${current_balances[account_key]["quota"]}, Used: ${current_balances[account_key]["used"]}'
-				# 检查是否已经在通知内容中（避免重复）
-				if not any(account_name in item for item in notification_content):
-					notification_content.append(account_result)
-
 	# 保存当前余额hash
 	if current_balance_hash:
 		save_balance_hash(current_balance_hash)
 
 	if need_notify and notification_content:
-		# 构建通知内容
-		summary = [
-			'[STATS] Check-in result statistics:',
-			f'[SUCCESS] Success: {success_count}/{total_count}',
-			f'[FAIL] Failed: {total_count - success_count}/{total_count}',
-		]
+		# 构建美观的通知内容
+		time_info = f'📅 **执行时间**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
 
+		# 构建统计摘要
+		fail_count = total_count - success_count
 		if success_count == total_count:
-			summary.append('[SUCCESS] All accounts check-in successful!')
+			summary_icon = '🎉'
+			summary_text = '全部签到成功！'
 		elif success_count > 0:
-			summary.append('[WARN] Some accounts check-in successful')
+			summary_icon = '⚠️'
+			summary_text = '部分签到成功'
 		else:
-			summary.append('[ERROR] All accounts check-in failed')
+			summary_icon = '🚨'
+			summary_text = '全部签到失败'
 
-		time_info = f'[TIME] Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+		summary = f'---\n### 📊 签到统计\n{summary_icon} {summary_text}\n\n**成功**: {success_count}/{total_count} | **失败**: {fail_count}/{total_count}'
 
-		notify_content = '\n\n'.join([time_info, '\n'.join(notification_content), '\n'.join(summary)])
+		notify_content = '\n\n'.join([time_info, '\n'.join(notification_content), summary])
 
 		print(notify_content)
 		notify.push_message('AnyRouter Check-in Alert', notify_content, msg_type='text')

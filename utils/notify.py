@@ -74,11 +74,27 @@ class NotificationKit:
 		if not self.feishu_webhook:
 			raise ValueError('Feishu Webhook not configured')
 
+		# 解析内容，提取成功/失败数量来决定卡片颜色
+		success_all = 'All accounts check-in successful!' in content
+		has_failure = '[FAIL]' in content or 'Failed: 0/0' not in content
+
+		# 根据结果选择卡片颜色
+		if success_all and not has_failure:
+			card_color = 'green'
+		elif has_failure:
+			card_color = 'red'
+		else:
+			card_color = 'blue'
+
 		data = {
 			'msg_type': 'interactive',
 			'card': {
+				'config': {'wide_screen_mode': True},
+				'header': {
+					'template': card_color,
+					'title': {'content': f'🔔 {title}', 'tag': 'plain_text'},
+				},
 				'elements': [{'tag': 'markdown', 'content': content, 'text_align': 'left'}],
-				'header': {'template': 'blue', 'title': {'content': title, 'tag': 'plain_text'}},
 			},
 		}
 		with httpx.Client(timeout=30.0) as client:
