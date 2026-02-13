@@ -284,7 +284,6 @@ async def main():
 	total_count = len(accounts)
 	notification_content = []
 	current_balances = {}
-	need_notify = False  # 是否需要发送通知
 	balance_changed = False  # 余额是否有变化
 
 	for i, account in enumerate(accounts):
@@ -318,14 +317,8 @@ async def main():
 
 			notification_content.append(account_result)
 
-			# 签到失败需要通知
-			if not success:
-				need_notify = True
-				print(f'[NOTIFY] {account_name} failed, will send notification')
-
 		except Exception as e:
 			print(f'[FAILED] {account_name} processing exception: {e}')
-			need_notify = True  # 异常也需要通知
 			notification_content.append(f'---\n### ❌ {account_name}\n**状态**: 签到失败\n**⚠️ 异常**: {str(e)[:50]}...')
 
 	# 检查余额变化
@@ -334,13 +327,11 @@ async def main():
 		if last_balance_hash is None:
 			# 首次运行
 			balance_changed = True
-			need_notify = True
-			print('[NOTIFY] First run detected, will send notification with current balances')
+			print('[INFO] First run detected')
 		elif current_balance_hash != last_balance_hash:
 			# 余额有变化
 			balance_changed = True
-			need_notify = True
-			print('[NOTIFY] Balance changes detected, will send notification')
+			print('[INFO] Balance changes detected')
 		else:
 			print('[INFO] No balance changes detected')
 
@@ -348,7 +339,7 @@ async def main():
 	if current_balance_hash:
 		save_balance_hash(current_balance_hash)
 
-	if need_notify and notification_content:
+	if notification_content:
 		# 构建美观的通知内容
 		time_info = f'📅 **执行时间**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
 
@@ -370,9 +361,7 @@ async def main():
 
 		print(notify_content)
 		notify.push_message('AnyRouter Check-in Alert', notify_content, msg_type='text')
-		print('[NOTIFY] Notification sent due to failures or balance changes')
-	else:
-		print('[INFO] All accounts successful and no balance changes detected, notification skipped')
+		print('[NOTIFY] Notification sent')
 
 	# 设置退出码
 	sys.exit(0 if success_count > 0 else 1)
